@@ -2,6 +2,14 @@
 
 将视频与音频整理成可阅读、可行动的笔记。原生 macOS 桌面应用，使用 SwiftUI、AVFoundation 与开源 whisper.cpp，要求 macOS 14 或更新版本。
 
+## 下载安装
+
+前往 [GitHub Releases](https://github.com/zhuyonghao/rustle/releases/latest) 下载最新安装包。当前预编译版本适用于 Apple Silicon（M 系列芯片），要求 macOS 14 或更新版本；Intel Mac 可从源码构建。
+
+下载 `.dmg` 后打开，将 `Rustle.app` 拖入「应用程序」；也可下载 `.zip` 解压后复制应用。发布页同时提供 `SHA256SUMS.txt` 校验文件。应用内含本地 Whisper 运行程序，不包含识别模型；首次使用时在设置中下载或选择模型。
+
+当前安装包使用临时签名，尚未使用 Developer ID 签名或经过 Apple 公证，首次打开可能被 macOS 安全机制拦截。已知问题与验证结果见各版本发布说明。
+
 ## 界面
 
 采用 macOS 原生窗口工具栏和可调整宽度的侧边栏，左侧为记录列表，中间为内容洞察，右侧为记录信息、播放器与转写文稿，配色跟随系统浅色 / 深色模式与强调色。记录列表支持键盘选择，搜索框、文稿分段切换、播放进度和待办复选框使用系统控件。按 `⌥⌘I` 显示或隐藏右侧转写文稿。
