@@ -1,0 +1,10 @@
+.build/
+.swiftpm/
+.runtime/
+dist/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+Credentials/
