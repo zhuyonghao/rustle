@@ -16,6 +16,12 @@ enum ExportFormat: String, CaseIterable, Identifiable {
 }
 
 enum TranscriptExporter {
+    /// Preserve the authored Markdown rather than escaping its formatting.
+    static func noteMarkdown(_ recording: Recording) -> String {
+        let markdown = recording.noteText.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        return markdown.isEmpty || markdown.hasSuffix("\n") ? markdown : markdown + "\n"
+    }
+
     static func export(_ recording: Recording, format: ExportFormat) -> String {
         switch format {
         case .markdown: markdown(recording)
@@ -26,6 +32,9 @@ enum TranscriptExporter {
 
     private static func markdown(_ recording: Recording) -> String {
         var lines = ["# \(escapeMarkdown(singleLine(recording.title)))", "", metadata(recording)]
+        if !recording.noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines += ["", "## 我的笔记", "", noteMarkdown(recording)]
+        }
         if let insights = recording.overview {
             lines += ["", "## 内容总结", "", escapeMarkdown(insights.summary)]
             if !insights.keyPoints.isEmpty {
@@ -39,7 +48,7 @@ enum TranscriptExporter {
                     "- [\(task.isCompleted ? "x" : " ")] \(escapeMarkdown(singleLine(task.title)))（负责人：\(escapeMarkdown(singleLine(task.owner)))；截止：\(escapeMarkdown(singleLine(task.dueDate)))）"
                 }
         }
-        lines += ["", "## 转写原文", ""]
+        if recording.sourceKind != .legacyNote { lines += ["", "## 转写原文", ""] }
         for segment in orderedSegments(recording) {
             let speaker = singleLine(segment.speaker)
             let heading = "\(displayTime(segment.start)) – \(displayTime(segmentEnd(segment)))\(speaker.isEmpty ? "" : " · \(escapeMarkdown(speaker))")"
@@ -50,6 +59,9 @@ enum TranscriptExporter {
 
     private static func plainText(_ recording: Recording) -> String {
         var lines = [singleLine(recording.title), metadata(recording)]
+        if !recording.noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines += ["", "我的笔记", clean(recording.noteText)]
+        }
         if let insights = recording.overview {
             lines += ["", "内容总结", clean(insights.summary)]
             if !insights.keyPoints.isEmpty {
@@ -63,7 +75,7 @@ enum TranscriptExporter {
                     "[\(task.isCompleted ? "已完成" : "待完成")] \(singleLine(task.title))（负责人：\(singleLine(task.owner))；截止：\(singleLine(task.dueDate))）"
                 }
         }
-        lines += ["", "转写原文"]
+        if recording.sourceKind != .legacyNote { lines += ["", "转写原文"] }
         for segment in orderedSegments(recording) {
             let speaker = singleLine(segment.speaker)
             lines += ["", "[\(displayTime(segment.start)) – \(displayTime(segmentEnd(segment)))]\(speaker.isEmpty ? "" : " \(speaker)")", clean(segment.text)]

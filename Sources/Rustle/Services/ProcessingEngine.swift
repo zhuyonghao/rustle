@@ -88,9 +88,9 @@ final class ProcessingEngine {
         return PreparedMedia(url: destination, title: title.isEmpty ? "新导入的媒体" : title)
     }
 
-    func transcribe(url: URL, configuration: ProcessingConfiguration, progress: @escaping @Sendable (ProcessingProgress) -> Void = { _ in }) async throws -> TranscriptionResult {
+    func transcribe(url: URL, configuration: ProcessingConfiguration, allowEmpty: Bool = false, progress: @escaping @Sendable (ProcessingProgress) -> Void = { _ in }) async throws -> TranscriptionResult {
         try Task.checkCancellation()
-        if configuration.provider == .whisperCpp { return try await LocalWhisperService().transcribe(url: url, configuration: configuration, progress: progress) }
+        if configuration.provider == .whisperCpp { return try await LocalWhisperService().transcribe(url: url, configuration: configuration, allowEmpty: allowEmpty, progress: progress) }
         guard url.isFileURL else { throw ProcessingFailure.message("请先将媒体导入本地，再开始转写。") }
         _ = try DashScopeASR.endpoint(configuration)
         let asset = AVURLAsset(url: url)
@@ -127,7 +127,7 @@ final class ProcessingEngine {
             start += length
             progress(.init(title: "语音分段已完成", fraction: start / duration, detail: "已处理 \(start.timestamp) / \(duration.timestamp)"))
         }
-        guard !allSegments.isEmpty else { throw ProcessingFailure.message("未识别到有效语音，请检查录音是否清晰。") }
+        guard allowEmpty || !allSegments.isEmpty else { throw ProcessingFailure.message("未识别到有效语音，请检查录音是否清晰。") }
         return TranscriptionResult(segments: allSegments, duration: duration, language: language)
     }
 

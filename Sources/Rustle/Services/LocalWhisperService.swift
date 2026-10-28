@@ -39,7 +39,7 @@ final class LocalWhisperService {
         return url
     }
 
-    func transcribe(url: URL, configuration: ProcessingConfiguration, progress: @escaping @Sendable (ProcessingProgress) -> Void = { _ in }) async throws -> TranscriptionResult {
+    func transcribe(url: URL, configuration: ProcessingConfiguration, allowEmpty: Bool = false, progress: @escaping @Sendable (ProcessingProgress) -> Void = { _ in }) async throws -> TranscriptionResult {
         try Task.checkCancellation()
         guard url.isFileURL else { throw ProcessingFailure.message("本地 Whisper 需要先将媒体导入本地。") }
         guard let executable = Self.resolveExecutable(configuration.whisperExecutablePath) else {
@@ -101,7 +101,7 @@ final class LocalWhisperService {
             offset += chunkDuration
             progress(.init(title: "本地转写已完成分段", fraction: offset / duration, detail: "已处理 \(offset.timestamp) / \(duration.timestamp)"))
         }
-        guard !segments.isEmpty else { throw ProcessingFailure.message("本地模型未识别到有效语音，请检查录音或尝试更大的多语言模型。") }
+        guard allowEmpty || !segments.isEmpty else { throw ProcessingFailure.message("本地模型未识别到有效语音，请检查录音或尝试更大的多语言模型。") }
         return TranscriptionResult(segments: segments, duration: duration, language: detectedLanguage)
     }
 

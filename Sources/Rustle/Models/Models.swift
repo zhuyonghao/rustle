@@ -6,9 +6,11 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
 }
 
 enum SourceKind: String, Codable {
-    case audio, video, link
-    var symbol: String { switch self { case .audio: "waveform"; case .video: "video"; case .link: "link" } }
-    var label: String { switch self { case .audio: "音频"; case .video: "视频"; case .link: "链接" } }
+    case audio, video, link, microphone
+    // Decode records created by the earlier text-note implementation.
+    case legacyNote = "note"
+    var symbol: String { switch self { case .audio: "waveform"; case .video: "video"; case .link: "link"; case .microphone: "mic"; case .legacyNote: "doc.text" } }
+    var label: String { switch self { case .audio: "音频"; case .video: "视频"; case .link: "链接"; case .microphone: "录音"; case .legacyNote: "文字" } }
 }
 
 enum RecordStatus: String, Codable {
@@ -164,6 +166,10 @@ struct Recording: Identifiable, Codable, Equatable {
     var insightsError: String?
     var isDemo = false
     var contentInsights: ContentInsights?
+    // Markdown source is persisted independently of ASR and generated insights.
+    var notes: String?
+    var noteText: String { notes ?? "" }
+    var hasExportableContent: Bool { !segments.isEmpty || !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var transcript: String { segments.map(\.text).joined(separator: "\n") }
     var apiInsights: MeetingInsights? { isDemo || insights?.isAIGenerated == true ? insights : nil }
     var overview: ContentOverview? {

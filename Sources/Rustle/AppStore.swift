@@ -41,10 +41,16 @@ final class AppStore: ObservableObject {
     @Published var isPlaying = false
     @Published var playbackRate: Float = 1
     @Published var configuration = ProcessingConfiguration()
+    @Published private(set) var liveSession: LiveRecordingSession?
+    @Published private(set) var unsavedNoteIDs: Set<UUID> = []
 
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var importTask: Task<Void, Never>?
+    private var liveTask: Task<Void, Never>?
+    private var noteSaveTask: Task<Void, Never>?
+    private let liveRecorder: LiveRecordingCapturing
+    private var lastLiveSaveDuration: TimeInterval = 0
     private var insightTasks: [InsightGenerationKey: Task<Void, Never>] = [:]
     private var terminationObserver: NSObjectProtocol?
     private let engine: ProcessingEngine
@@ -56,8 +62,9 @@ final class AppStore: ObservableObject {
     let storageLocationIsOverridden: Bool
     let modelManager: WhisperModelManager
 
-    init(engine: ProcessingEngine = ProcessingEngine(), directory: URL? = nil, initialConfiguration: ProcessingConfiguration? = nil, defaults: UserDefaults = .standard) {
+    init(engine: ProcessingEngine = ProcessingEngine(), directory: URL? = nil, initialConfiguration: ProcessingConfiguration? = nil, defaults: UserDefaults = .standard, liveRecorder: LiveRecordingCapturing? = nil) {
         self.engine = engine
+        self.liveRecorder = liveRecorder ?? LiveRecordingService()
         self.defaults = defaults
         let override = ProcessInfo.processInfo.environment["RUSTLE_DATA_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         storageLocationIsOverridden = directory == nil && override != nil
@@ -79,7 +86,7 @@ final class AppStore: ObservableObject {
                 }
                 for index in recordings.indices where recordings[index].status == .processing {
                     recordings[index].status = .failed
-                    recordings[index].errorMessage = "上次处理被中断，可重新导入文件。"
+                    recordings[index].errorMessage = "上次处理被中断。已保存的文稿和媒体保留，可重新转写。"
                 }
             } else { recordings = DemoContent.recordings }
         } catch {
@@ -172,7 +179,7 @@ final class AppStore: ObservableObject {
     var visibleRecordings: [Recording] {
         recordings.filter { record in
             (filter != .favorites || record.isFavorite)
-            && (search.isEmpty || record.title.localizedCaseInsensitiveContains(search) || record.transcript.localizedCaseInsensitiveContains(search))
+            && (search.isEmpty || record.title.localizedCaseInsensitiveContains(search) || record.transcript.localizedCaseInsensitiveContains(search) || record.noteText.localizedCaseInsensitiveContains(search))
         }
     }
     var canPlay: Bool { player != nil }
@@ -180,7 +187,11 @@ final class AppStore: ObservableObject {
 
     @discardableResult func save() -> Bool {
         guard persistenceAvailable, !isMigratingStorage else { return false }
-        do { try JSONEncoder().encode(recordings).write(to: dataDirectory.appendingPathComponent("library.json"), options: .atomic); return true }
+        do {
+            try JSONEncoder().encode(recordings).write(to: dataDirectory.appendingPathComponent("library.json"), options: .atomic)
+            unsavedNoteIDs.removeAll()
+            return true
+        }
         catch { alertMessage = "保存失败：\(error.localizedDescription)"; return false }
     }
 
@@ -211,8 +222,8 @@ final class AppStore: ObservableObject {
     var storageChangeUnavailableReason: String? {
         if storageLocationIsOverridden { return "存储位置由 RUSTLE_DATA_DIR 环境变量指定，请修改环境变量后重新启动。" }
         if isMigratingStorage { return "正在迁移本地数据，请等待完成。" }
-        if importTask != nil || generatingInsights || modelManager.isDownloading {
-            return "请等待导入、内容生成和模型下载结束后再更改位置。"
+        if importTask != nil || liveSession != nil || generatingInsights || modelManager.isDownloading {
+            return "请等待录音、转写、导入、内容生成和模型下载结束后再更改位置。"
         }
         return nil
     }
@@ -304,6 +315,7 @@ final class AppStore: ObservableObject {
 
     func chooseFiles() {
         guard !isMigratingStorage else { return }
+        guard liveSession == nil else { announce("请先结束实时转录"); return }
         guard importTask == nil else { announce("请等待当前导入完成，或先取消处理"); return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.audio, .movie, .mpeg4Audio, .mp3, .wav, .aiff]
@@ -325,6 +337,7 @@ final class AppStore: ObservableObject {
 
     func importMedia(_ urls: [URL]) {
         guard !isMigratingStorage else { announce("正在迁移本地数据，请稍后再导入"); return }
+        guard liveSession == nil else { announce("请先结束实时转录"); return }
         guard importTask == nil else { announce("已有文件正在处理，请稍后再导入"); return }
         guard persistenceAvailable else { alertMessage = "本地存储不可用，请修复目录权限后重新打开 Rustle。"; return }
         let config = configuration
@@ -400,6 +413,17 @@ final class AppStore: ObservableObject {
     }
 
     private func stopAllWork() {
+        let duration = liveRecorder.stop()
+        liveTask?.cancel()
+        if let id = liveSession?.id {
+            update(id) {
+                $0.duration = max($0.duration, duration)
+                $0.status = .failed
+                $0.errorMessage = "实时转写被中断。录音和已识别文稿已保留，可重新转写。"
+            }
+        }
+        noteSaveTask?.cancel()
+        save()
         importTask?.cancel()
         for task in insightTasks.values { task.cancel() }
         insightTasks.removeAll(); insightGenerations.removeAll()
@@ -519,6 +543,7 @@ final class AppStore: ObservableObject {
     }
     func editSegment(_ id: UUID, text: String) {
         guard !isMigratingStorage else { return }
+        guard selected?.status != .processing else { return }
         guard let recordID = selectedID else { return }
         guard let record = selected, let segment = record.segments.first(where: { $0.id == id }), segment.text != text else { return }
         cancelInsightGeneration(for: recordID)
@@ -548,6 +573,11 @@ final class AppStore: ObservableObject {
         guard save() else { recordings = previous; return }
         if selectedID == id { selectedID = visibleRecordings.first?.id }
         cancelInsightGeneration(for: id)
+        if liveSession?.id == id {
+            let task = liveTask
+            cancelLiveTranscription()
+            await task?.value
+        }
         if processingID == id {
             let task = importTask
             cancelProcessing()
@@ -568,6 +598,31 @@ final class AppStore: ObservableObject {
         guard let record = selected else { return }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(record.transcript, forType: .string)
         announce("文字已复制")
+    }
+    func updateNotes(for id: UUID, markdown: String) {
+        guard !isMigratingStorage, let record = recordings.first(where: { $0.id == id }), record.noteText != markdown else { return }
+        update(id) { $0.notes = markdown }
+        unsavedNoteIDs.insert(id)
+        noteSaveTask?.cancel()
+        noteSaveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            self?.save()
+        }
+    }
+
+    func exportNotesMarkdown(for id: UUID) {
+        guard let record = recordings.first(where: { $0.id == id }),
+              !record.noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = record.title.replacingOccurrences(of: "/", with: "-") + "-我的笔记.md"
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try TranscriptExporter.noteMarkdown(record).write(to: url, atomically: true, encoding: .utf8)
+                announce("Markdown 笔记已导出")
+            } catch { alertMessage = "导出失败：\(error.localizedDescription)" }
+        }
     }
     func exportSelected(_ format: ExportFormat) {
         guard let record = selected else { return }
@@ -647,7 +702,7 @@ final class AppStore: ObservableObject {
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil; player?.pause(); player = nil; playhead = 0; isPlaying = false
         transcriptSearch = ""
-        guard let path = selected?.localMediaPath, FileManager.default.fileExists(atPath: path) else { return }
+        guard selected?.status != .processing, let path = selected?.localMediaPath, FileManager.default.fileExists(atPath: path) else { return }
         let avPlayer = AVPlayer(url: URL(fileURLWithPath: path))
         player = avPlayer
         timeObserver = avPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.2, preferredTimescale: 600), queue: .main) { [weak self] time in
@@ -660,6 +715,130 @@ final class AppStore: ObservableObject {
     }
     private func update(_ id: UUID, _ change: (inout Recording) -> Void) {
         if let index = recordings.firstIndex(where: { $0.id == id }) { change(&recordings[index]) }
+    }
+
+    func startLiveRecording() {
+        guard !isMigratingStorage, persistenceAvailable else { alertMessage = "本地存储不可用，无法保存录音。"; return }
+        guard liveTask == nil, importTask == nil else { announce("请等待当前录音或转写结束"); return }
+        let config = configuration
+        let id = UUID()
+        liveSession = LiveRecordingSession(id: id, provider: config.provider)
+        lastLiveSaveDuration = 0
+        liveTask = Task {
+            let directory = dataDirectory.appendingPathComponent("Media/\(id.uuidString)", isDirectory: true)
+            defer {
+                liveRecorder.stop()
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent("LiveChunks", isDirectory: true))
+                liveSession = nil; liveTask = nil
+            }
+            do {
+                let report = try await RuntimeEnvironmentChecker.check(configuration: config, directory: dataDirectory, includeOptional: false)
+                guard report.failures.isEmpty else {
+                    showSettingsSheet = true
+                    announce("运行环境未就绪：" + report.failures.map(\.title).joined(separator: "、"))
+                    return
+                }
+                if config.provider == .dashScope { _ = try DashScopeASR.endpoint(config) }
+                guard await liveRecorder.requestPermission() else {
+                    throw ProcessingFailure.message("未获得麦克风权限。请在系统设置 → 隐私与安全性 → 麦克风中允许 Rustle，然后重试。")
+                }
+                try Task.checkCancellation()
+                let title = "录音 " + Date().formatted(.dateTime.month().day().hour().minute())
+                let record = Recording(id: id, title: title, duration: 0, sourceKind: .microphone,
+                                       localMediaPath: directory.appendingPathComponent("microphone.caf").path,
+                                       language: config.localeIdentifier, status: .processing, segments: [])
+                recordings.insert(record, at: 0)
+                guard save() else { recordings.removeAll { $0.id == id }; return }
+                filter = .all; search = ""; selectedID = id
+                let chunks = try liveRecorder.start(in: directory) { [weak self] progress in
+                    Task { @MainActor in
+                        guard let self, self.liveSession?.id == id, self.liveSession?.phase == .recording else { return }
+                        self.liveSession?.duration = progress.duration
+                        self.liveSession?.level = progress.level
+                        self.update(id) { $0.duration = progress.duration }
+                        if progress.duration - self.lastLiveSaveDuration >= 5 {
+                            self.lastLiveSaveDuration = progress.duration
+                            self.save()
+                        }
+                    }
+                }
+                liveSession?.phase = .recording
+                for try await chunk in chunks {
+                    try Task.checkCancellation()
+                    let result = try await engine.transcribe(url: chunk.url, configuration: config, allowEmpty: true)
+                    try Task.checkCancellation()
+                    guard recordings.contains(where: { $0.id == id }) else { throw CancellationError() }
+                    update(id) {
+                        $0.segments.append(contentsOf: chunk.offsetting(result.segments))
+                        $0.duration = max($0.duration, chunk.start + chunk.duration)
+                        $0.language = result.language
+                    }
+                    liveSession?.transcribedDuration = chunk.start + chunk.duration
+                    try? FileManager.default.removeItem(at: chunk.url)
+                    save()
+                }
+                try Task.checkCancellation()
+                update(id) { $0.status = .ready; $0.errorMessage = nil }
+                save()
+                if selectedID == id { loadPlayer() }
+                queueAutomaticInsights(for: id)
+                announce("录音和文稿已保存")
+            } catch {
+                let duration = liveRecorder.stop()
+                let message = Task.isCancelled ? "实时转写已停止，录音和已识别文稿已保留，可重新转写。" : error.localizedDescription
+                if recordings.contains(where: { $0.id == id }) {
+                    update(id) { $0.duration = max($0.duration, duration); $0.status = .failed; $0.errorMessage = message }
+                    save()
+                    if selectedID == id { loadPlayer() }
+                } else if !Task.isCancelled { alertMessage = message }
+            }
+        }
+    }
+
+    func stopLiveRecording() {
+        guard let session = liveSession else { return }
+        if session.phase == .preparing { liveTask?.cancel(); return }
+        guard session.phase == .recording else { return }
+        let duration = liveRecorder.stop()
+        liveSession?.phase = .finishing
+        liveSession?.duration = duration
+        liveSession?.level = 0
+        update(session.id) { $0.duration = duration }
+        save()
+    }
+
+    func cancelLiveTranscription() {
+        stopLiveRecording()
+        liveTask?.cancel()
+    }
+
+    func retryTranscription(for id: UUID) {
+        guard !isMigratingStorage, liveTask == nil, importTask == nil, persistenceAvailable,
+              let record = recordings.first(where: { $0.id == id }), record.status == .failed,
+              let path = record.localMediaPath, FileManager.default.fileExists(atPath: path) else { return }
+        let config = configuration
+        cancelInsightGeneration(for: id)
+        update(id) { $0.status = .processing; $0.errorMessage = nil }
+        if selectedID == id { loadPlayer() }
+        processingID = id; processingStartedAt = Date(); processingStage = "正在重新转写…"
+        save()
+        importTask = Task {
+            defer { progressToken = UUID(); processingID = nil; processingStage = ""; processingProgress = nil; processingStartedAt = nil; importTask = nil }
+            do {
+                let result = try await engine.transcribe(url: URL(fileURLWithPath: path), configuration: config, progress: progressHandler(for: id))
+                try Task.checkCancellation()
+                update(id) {
+                    $0.segments = result.segments; $0.duration = result.duration; $0.language = result.language
+                    $0.status = .ready; $0.errorMessage = nil
+                    $0.insights = nil; $0.contentInsights = nil; $0.insightsError = nil
+                }
+                queueAutomaticInsights(for: id)
+            } catch {
+                update(id) { $0.status = .failed; $0.errorMessage = Task.isCancelled ? "转写已取消，原文稿已保留。" : error.localizedDescription }
+            }
+            save()
+            if selectedID == id { loadPlayer() }
+        }
     }
     func announce(_ text: String) {
         toast = text

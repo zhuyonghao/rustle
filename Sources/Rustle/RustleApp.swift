@@ -20,6 +20,13 @@ struct RustleApp: App {
         .commands {
             RecordingCommands()
             CommandGroup(replacing: .newItem) {
+                Button(store.liveSession?.phase == .recording ? "结束录音" : "开始实时转录") {
+                    if store.liveSession?.phase == .recording { store.stopLiveRecording() }
+                    else { store.startLiveRecording() }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(store.processingID != nil || (store.liveSession != nil && store.liveSession?.phase != .recording))
+                Divider()
                 Button("导入音频或视频…") {
                     NotificationCenter.default.post(name: Notification.Name("Rustle.importFiles"), object: nil)
                 }

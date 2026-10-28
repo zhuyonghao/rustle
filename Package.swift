@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [.executable(name: "Rustle", targets: ["Rustle"])],
     targets: [
-        .executableTarget(name: "Rustle"),
+        .executableTarget(name: "Rustle", resources: [.copy("Resources/NotesEditor")]),
         .testTarget(name: "RustleTests", dependencies: ["Rustle"])
     ],
     swiftLanguageVersions: [.v5]

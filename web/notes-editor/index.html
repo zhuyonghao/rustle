@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src https: data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="editor.css">
+  <script defer src="editor.js"></script>
+  <title>我的笔记</title>
+</head>
+<body>
+  <div id="toolbar" role="toolbar" aria-label="Markdown 格式工具栏">
+    <select id="block-style" aria-label="段落样式">
+      <option value="paragraph">正文</option>
+      <option value="1">标题 1</option><option value="2">标题 2</option><option value="3">标题 3</option>
+      <option value="4">标题 4</option><option value="5">标题 5</option><option value="6">标题 6</option>
+    </select>
+    <span class="divider" aria-hidden="true"></span>
+    <button data-command="bold" aria-label="加粗" title="加粗 · ⌘B"><b>B</b></button>
+    <button data-command="italic" aria-label="斜体" title="斜体 · ⌘I"><i>I</i></button>
+    <button data-command="strike" aria-label="删除线" title="删除线"><s>S</s></button>
+    <button data-command="code" aria-label="行内代码" title="行内代码">&lt;/&gt;</button>
+    <button id="link-button" aria-label="添加或编辑链接" title="链接">↗</button>
+    <span class="divider" aria-hidden="true"></span>
+    <button data-command="bulletList" aria-label="无序列表" title="无序列表">• ≡</button>
+    <button data-command="orderedList" aria-label="有序列表" title="有序列表">1. ≡</button>
+    <button data-command="taskList" aria-label="待办列表" title="待办列表">☑</button>
+    <button data-command="blockquote" aria-label="引用" title="引用">❝</button>
+    <button data-command="codeBlock" aria-label="代码块" title="代码块">{ }</button>
+    <button data-command="table" aria-label="插入表格" title="插入 3×3 表格">▦</button>
+    <button data-command="horizontalRule" aria-label="分隔线" title="分隔线">—</button>
+    <span class="divider" aria-hidden="true"></span>
+    <button data-command="undo" aria-label="撤销" title="撤销 · ⌘Z">↶</button>
+    <button data-command="redo" aria-label="重做" title="重做 · ⇧⌘Z">↷</button>
+    <span id="table-actions" hidden>
+      <button data-command="addRow" aria-label="在下方添加行" title="添加行">行+</button>
+      <button data-command="addColumn" aria-label="在右侧添加列" title="添加列">列+</button>
+      <button data-command="deleteTable" aria-label="删除表格" title="删除表格">移除表格</button>
+    </span>
+  </div>
+  <form id="link-panel" hidden>
+    <label for="link-url">链接地址</label>
+    <input id="link-url" type="text" placeholder="https://example.com" aria-label="链接地址">
+    <button type="submit">应用</button><button type="button" id="cancel-link">取消</button>
+  </form>
+  <main id="editor"></main>
+</body>
+</html>

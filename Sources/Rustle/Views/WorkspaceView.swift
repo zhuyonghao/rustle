@@ -15,8 +15,9 @@ struct WorkspaceView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 340)
         } detail: {
             VStack(spacing: 0) {
+                if let session = store.liveSession { LiveRecordingBar(session: session) }
                 if let record = store.selected {
-                    InsightsView(record: record).id(record.id)
+                    RecordingContentView(record: record).id(record.id)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else { emptyState }
             }
@@ -60,6 +61,9 @@ struct WorkspaceView: View {
             }
         }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $dropTargeted, perform: store.receiveDrop)
+        .onChange(of: store.liveSession?.phase) { _, phase in
+            if phase == .recording { showTranscript = true }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Rustle.importFiles"))) { _ in store.chooseFiles() }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Rustle.importLink"))) { _ in store.showLinkSheet = true }
         .sheet(isPresented: $store.showLinkSheet) { ImportLinkView() }
@@ -74,7 +78,7 @@ struct WorkspaceView: View {
                 Task { await store.deleteRecording(record.id) }
             }
         } message: { record in
-            Text("将永久删除「\(record.title)」及其文稿、摘要、思维导图、待办、追问、翻译和本地媒体副本。正在进行的处理也会取消，原始文件不受影响。")
+            Text("将永久删除「\(record.title)」及其笔记、文稿、摘要、思维导图、待办、追问、翻译和本地媒体副本。正在进行的录音和处理也会停止，原始文件不受影响。")
         }
         .alert("重命名", isPresented: $showRename) {
             TextField("记录名称", text: $newTitle)
@@ -86,9 +90,19 @@ struct WorkspaceView: View {
     @ToolbarContentBuilder
     private var workspaceToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                if store.liveSession?.phase == .recording { store.stopLiveRecording() }
+                else { store.startLiveRecording() }
+            } label: {
+                Label(store.liveSession == nil ? "实时转录" : "结束录音", systemImage: store.liveSession == nil ? "mic" : "stop.circle.fill")
+            }
+            .disabled(store.processingID != nil || (store.liveSession != nil && store.liveSession?.phase != .recording))
+            .help("使用麦克风边录边转写 · ⇧⌘R")
             Button(action: store.chooseFiles) { Label("导入文件", systemImage: "plus") }
+                .disabled(store.liveSession != nil)
                 .help("导入音频或视频 · ⌘O")
             Button { store.showLinkSheet = true } label: { Label("导入链接", systemImage: "link") }
+                .disabled(store.liveSession != nil)
                 .help("导入媒体链接 · ⌘L")
         }
         ToolbarItemGroup(placement: .automatic) {
@@ -101,9 +115,10 @@ struct WorkspaceView: View {
                 Menu {
                     ForEach(ExportFormat.allCases) { format in
                         Button(format.rawValue) { store.exportSelected(format) }
+                            .disabled(format == .srt && record.segments.isEmpty)
                     }
                 } label: { Label("导出", systemImage: "square.and.arrow.up") }
-                    .disabled(record.segments.isEmpty).help("导出文稿与笔记")
+                    .disabled(!record.hasExportableContent).help("导出文稿与内容洞察")
                 Menu {
                     Button("重命名…") { newTitle = record.title; showRename = true }
                     Button("复制全部文字", action: store.copyTranscript).disabled(record.segments.isEmpty)
@@ -146,7 +161,7 @@ struct WorkspaceView: View {
                 }
                 Spacer(minLength: 0)
             }
-            if record.status == .processing {
+            if record.status == .processing, store.liveSession?.id != record.id {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 10) {
                         Text(store.processingStage).font(.system(size: 12, weight: .medium))
@@ -176,6 +191,11 @@ struct WorkspaceView: View {
                     Image(systemName: "exclamationmark.circle").foregroundStyle(Palette.amber)
                     Text(record.errorMessage ?? "处理失败，请重试。").font(.system(size: 12)).textSelection(.enabled)
                     Spacer()
+                    if record.localMediaPath != nil {
+                        Button("重新转写") { store.retryTranscription(for: record.id) }
+                            .buttonStyle(.plain).foregroundStyle(Palette.accent)
+                            .disabled(store.liveSession != nil || store.processingID != nil)
+                    }
                     Button("设置") { store.showSettingsSheet = true }.buttonStyle(.plain).foregroundStyle(Palette.accent)
                 }.padding(14).background(Palette.amber.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
             }
@@ -186,9 +206,11 @@ struct WorkspaceView: View {
         ContentUnavailableView {
             Label("把声音，变成有用的文字", systemImage: "waveform")
         } description: {
-            Text("拖入音频或视频，或导入媒体链接，即可开始转写。")
+            Text("使用麦克风实时转录，或导入音视频生成文稿。")
         } actions: {
             HStack(spacing: 12) {
+                Button("实时转录", action: store.startLiveRecording).buttonStyle(.bordered)
+                    .disabled(store.liveSession != nil)
                 Button("导入文件", action: store.chooseFiles).buttonStyle(.borderedProminent)
                 Button("导入链接") { store.showLinkSheet = true }.buttonStyle(.bordered)
             }

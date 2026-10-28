@@ -41,6 +41,7 @@ SOURCES=(
     "$PROJECT_ROOT/Sources/Rustle/Services/StreamingProcess.swift"
     "$PROJECT_ROOT/Sources/Rustle/Services/RuntimeEnvironmentChecker.swift"
     "$PROJECT_ROOT/Sources/Rustle/Services/LibraryStorageMigration.swift"
+    "$PROJECT_ROOT/Sources/Rustle/Services/LiveRecordingService.swift"
     "$PROJECT_ROOT/Tests/CoreHarness.swift"
 )
 if [[ -f "$PROJECT_ROOT/Sources/Rustle/Services/LocalWhisperService.swift" ]]; then

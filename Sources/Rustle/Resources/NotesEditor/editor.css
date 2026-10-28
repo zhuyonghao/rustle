@@ -1,0 +1,54 @@
+:root {
+  color-scheme: light dark;
+  --background: #ffffff; --text: #242424; --secondary: #777; --line: #e5e5e7; --accent: #1875d1; --code: #f5f5f7;
+  font: 14px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color: var(--text); background: var(--background);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --background: #1e1e1e; --text: #e5e5e7; --secondary: #929295; --line: #38383a; --accent: #5ba8f5; --code: #29292c; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+#toolbar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--background); }
+button, select, input { font: inherit; color: inherit; }
+button, select { font-size: 12px; }
+button, select { border: 0; border-radius: 5px; background: transparent; height: 29px; cursor: pointer; }
+button { min-width: 26px; padding: 0 5px; }
+button:hover, button[aria-pressed="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
+button:disabled { opacity: .3; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+select { max-width: 76px; }
+.divider { width: 1px; height: 17px; margin: 0 2px; background: var(--line); }
+#link-panel { position: sticky; top: 47px; z-index: 11; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 24px; border-bottom: 1px solid var(--line); background: var(--background); }
+#link-panel label { color: var(--secondary); font-size: 12px; }
+#link-url { flex: 1; min-width: 180px; padding: 7px; background: var(--code); border: 1px solid var(--line); border-radius: 5px; }
+.tiptap { max-width: 900px; min-height: calc(100vh - 70px); margin: 0 auto; padding: 22px 28px 80px; outline: none; line-height: 1.8; overflow-wrap: break-word; caret-color: var(--accent); }
+.tiptap > :first-child { margin-top: 0; }
+.tiptap p { margin: 0 0 12px; }
+.tiptap h1, .tiptap h2, .tiptap h3, .tiptap h4, .tiptap h5, .tiptap h6 { line-height: 1.4; margin: 26px 0 12px; font-weight: 650; }
+.tiptap h1 { font-size: 28px; } .tiptap h2 { font-size: 23px; } .tiptap h3 { font-size: 19px; }
+.tiptap h4 { font-size: 17px; } .tiptap h5 { font-size: 15px; } .tiptap h6 { font-size: 14px; color: var(--secondary); }
+.tiptap a { color: var(--accent); text-decoration: underline; }
+.tiptap ul, .tiptap ol { padding-left: 25px; margin: 12px 0; }
+.tiptap li p { margin: 3px 0; }
+.tiptap blockquote { margin: 18px 0; padding: 1px 0 1px 16px; border-left: 3px solid var(--accent); color: var(--secondary); }
+.tiptap blockquote p:last-child { margin-bottom: 0; }
+.tiptap code { font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace; border-radius: 4px; padding: 2px 5px; background: var(--code); }
+.tiptap pre { padding: 16px; border: 1px solid var(--line); border-radius: 7px; background: var(--code); white-space: pre; overflow-x: auto; }
+.tiptap pre code { padding: 0; background: transparent; line-height: 1.7; }
+.tiptap hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line); }
+.tiptap table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 18px 0; }
+.tiptap th, .tiptap td { position: relative; min-width: 70px; padding: 8px 10px; border: 1px solid var(--line); vertical-align: top; }
+.tiptap th { font-weight: 600; background: var(--code); }
+.tiptap td p, .tiptap th p { margin: 0; }
+.tiptap .selectedCell { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.tiptap ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.tiptap li[data-type="taskItem"] { display: flex; align-items: baseline; gap: 9px; }
+.tiptap li[data-type="taskItem"] > label { flex: 0 0 auto; user-select: none; }
+.tiptap li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
+.tiptap li[data-checked="true"] > div > p { color: var(--secondary); text-decoration: line-through; }
+.tiptap input[type="checkbox"] { accent-color: var(--accent); }
+.tiptap img { max-width: 100%; height: auto; border-radius: 5px; }
+.tiptap p.is-editor-empty:first-child::before { color: var(--secondary); content: attr(data-placeholder); float: left; height: 0; pointer-events: none; }
+.tiptap ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }

@@ -53,13 +53,18 @@ struct TranscriptView: View {
                         }
                     }.padding(.bottom, 25)
                 }
+                .onChange(of: record.segments.last?.id) { _, id in
+                    if store.liveSession?.id == record.id, store.transcriptSearch.isEmpty, let id {
+                        withAnimation { proxy.scrollTo(id, anchor: .bottom) }
+                    }
+                }
                 .onChange(of: activeSegmentID) { _, id in
                     if store.isPlaying, let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
                 }
             }
             HStack(spacing: 6) {
                 Image(systemName: record.isDemo ? "info.circle" : "checkmark.circle")
-                Text(record.isDemo ? "示例文稿 · 导入自己的文件即可开始" : "点击时间戳跳转播放 · 双击段落编辑")
+                Text(record.isDemo ? "示例文稿 · 导入自己的文件即可开始" : record.status == .processing ? "转写结果持续追加 · 完成后可编辑和播放" : "点击时间戳跳转播放 · 双击段落编辑")
                 Spacer()
                 Text("\(record.transcript.count) 字")
             }.font(.system(size: 11)).foregroundStyle(Palette.secondary).padding(.horizontal, 29).frame(height: 36)
@@ -86,7 +91,7 @@ struct TranscriptView: View {
                     Circle().fill(speakerColor.opacity(0.8)).frame(width: 5, height: 5)
                     Text(segment.speaker).font(.system(size: 11, weight: .medium)).foregroundStyle(speakerColor.opacity(0.85))
                     Spacer()
-                    Button { beginEditing(segment) } label: { Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(Palette.secondary) }.buttonStyle(.plain).help("编辑此段")
+                    Button { beginEditing(segment) } label: { Image(systemName: "pencil").font(.system(size: 11)).foregroundStyle(Palette.secondary) }.buttonStyle(.plain).help("编辑此段").disabled(record.status == .processing)
                 }
                 transcriptText(segment)
             }
@@ -100,7 +105,7 @@ struct TranscriptView: View {
             .accessibilityAction(named: Text("编辑此段")) { beginEditing(segment) }
     }
     private func beginEditing(_ segment: TranscriptSegment) {
-        guard editingSegment == nil else { return }
+        guard editingSegment == nil, record.status != .processing else { return }
         editingSegment = segment
     }
     private func speakerIndex(_ speaker: String) -> Int {

@@ -71,15 +71,25 @@ struct LibrarySidebar: View {
                 HStack(spacing: 5) {
                     Text(record.createdAt.formatted(.dateTime.month().day()))
                     Text("·")
-                    Text(record.status == .processing ? store.processingStage : record.status == .failed ? "处理失败" : record.duration.durationLabel).lineLimit(1)
+                    Text(recordingDetail(record)).lineLimit(1)
                     Spacer(minLength: 0)
                     if record.isFavorite { Image(systemName: "star.fill").font(.system(size: 10)) }
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
-                if record.status == .processing, let fraction = store.processingProgress?.fraction {
+                if record.status == .processing, store.processingID == record.id, let fraction = store.processingProgress?.fraction {
                     ProgressView(value: fraction).controlSize(.mini)
                 }
             }
         }.padding(.vertical, 7)
+    }
+
+    private func recordingDetail(_ record: Recording) -> String {
+        if let live = store.liveSession, live.id == record.id {
+            return "\(live.phase == .recording ? "录音中" : "转写中") · \(live.duration.timestamp)"
+        }
+        if record.status == .processing { return store.processingID == record.id ? store.processingStage : "等待处理" }
+        if record.status == .failed { return "转写未完成" }
+        if record.sourceKind == .legacyNote { return "文字 · \(record.noteText.count) 字" }
+        return record.duration.durationLabel
     }
 
     private func filterSymbol(_ filter: LibraryFilter) -> String {

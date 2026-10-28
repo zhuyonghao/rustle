@@ -8,6 +8,17 @@ class XCTestCase {
     func tearDown() {}
 }
 
+private struct CoreUnwrapFailure: Error, CustomStringConvertible {
+    var description: String
+}
+
+func XCTUnwrap<T>(_ expression: @autoclosure () throws -> T?, _ message: @autoclosure () -> String = "", file: StaticString = #filePath, line: UInt = #line) throws -> T {
+    guard let value = try expression() else {
+        throw CoreUnwrapFailure(description: "\(file):\(line): Expected a non-nil value. \(message())")
+    }
+    return value
+}
+
 enum CoreTestRunner {
     private static let lock = NSLock()
     private static var failures: [String] = []
